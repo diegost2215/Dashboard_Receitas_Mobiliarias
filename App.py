@@ -8,12 +8,13 @@ import plotly.graph_objects as go
 
 
 ano_atual = 2025
-color_palete = list(px.colors.qualitative.Antique) + list(px.colors.qualitative.T10)
-st.set_page_config(layout ="wide", initial_sidebar_state="auto", page_title='Painel de Receitas', page_icon=None)
+color_palete = list(px.colors.qualitative.T10) + list(px.colors.qualitative.Antique) 
+st.set_page_config(layout ="wide", initial_sidebar_state="auto", page_title='Painel de Receitas Mobiliárias', page_icon=':material/monitoring:')
 
 local_VA_CNAE = 'files/VAS_anuais.xlsx'
 local_nfse = 'files/Arrecadação_item_lista.xlsx'
 local_arrecadacao_simples = 'files/Arrecadacao_simples.xlsx'
+local_VA_IPM = 'files/VA_X_IPM.xlsx'
 
 @st.cache_data()
 def load_data():
@@ -39,22 +40,26 @@ def load_data():
 
 
   Arrecadacoes_Simples = pd.read_excel(local_arrecadacao_simples)
+
   #Arrecadacoes_Simples = pd.DataFrame()
+
+  VA_IPM = pd.read_excel(local_VA_IPM)
 
   VA_CNAE = pd.DataFrame()
   for ano in range(2020,2025):
     temp = pd.read_excel(local_VA_CNAE, sheet_name = str(ano))
     temp.insert(0, 'Ano', str(ano))
     VA_CNAE = pd.concat([VA_CNAE, temp], axis=0)
-    VA_CNAE_Itajai = VA_CNAE[VA_CNAE['Codigo do Município']==81612]
-
-  return Dados_nfse, Arrecadacoes_Simples, VA_CNAE_Itajai
 
 
+  VA_CNAE_Itajai = deepcopy(VA_CNAE[VA_CNAE['Codigo do Município']==81612])
+  VA_CNAE_Itajai['Seção Cnae'] = VA_CNAE_Itajai['Grupo CNAE'].astype(str).str[:2].map(dimy4.cnae_grupos )
+  VA_CNAE_Itajai['Divisão Cnae'] = VA_CNAE_Itajai['Grupo CNAE'].astype(str).str[:2].map(dimy4.cnae_divisoes )
 
-Dados_nfse, Arrecadacoes_Simples, VA_CNAE_Itajai = load_data()
 
+  return Dados_nfse, Arrecadacoes_Simples, VA_CNAE_Itajai, VA_IPM
 
+Dados_nfse, Arrecadacoes_Simples, VA_CNAE_Itajai, VA_IPM = load_data()
 
 #construção das métricas
 
@@ -70,19 +75,14 @@ valor_ISS_nota_ano_atual = Dados_nfse[Dados_nfse['Ano']==str(ano_atual)]['ISS To
 valor_ISS_nota_ano_anterior = Dados_nfse[Dados_nfse['Ano']==str(ano_atual-1)]['ISS Total NFSE'].sum()
 valor_ISS_nota_delta = (valor_ISS_nota_ano_atual-valor_ISS_nota_ano_anterior)/valor_ISS_nota_ano_anterior*100
 
-Arrecadacao_Simples_ano_atual = Arrecadacoes_Simples[Arrecadacoes_Simples['Ano']==ano_atual]['Arrecadação_simples'].sum()
-Arrecadacao_Simples_ano_anterior = Arrecadacoes_Simples[Arrecadacoes_Simples['Ano']==(ano_atual-1)]['Arrecadação_simples'].sum()
+Arrecadacao_Simples_ano_atual = Arrecadacoes_Simples[Arrecadacoes_Simples['Ano']==ano_atual]['Arrecadação Simples'].sum()
+Arrecadacao_Simples_ano_anterior = Arrecadacoes_Simples[Arrecadacoes_Simples['Ano']==(ano_atual-1)]['Arrecadação Simples'].sum()
 Arrecadacao_Simples_delta = (Arrecadacao_Simples_ano_atual-Arrecadacao_Simples_ano_anterior)/Arrecadacao_Simples_ano_anterior*100
 
 ano_recente_Icms = ano_atual-1
 VA_ICMS_ano_recevente = VA_CNAE_Itajai[(VA_CNAE_Itajai['Ano']==str(ano_recente_Icms))]['Valor Adicionado'].sum()  #ICMS vai ter defasagem de dois anos
 VA_ICMS_ano_recevente_anterior = VA_CNAE_Itajai[(VA_CNAE_Itajai['Ano']==str(ano_recente_Icms-1))]['Valor Adicionado'].sum()  #ICMS vai ter defasagem de dois anos
 VA_ICMS_delta = (VA_ICMS_ano_recevente-VA_ICMS_ano_recevente_anterior)/VA_ICMS_ano_recevente_anterior*100
-
-
-
-
-
 
 
 with st.container(border=True):
@@ -116,10 +116,11 @@ with st.container(border=True):
   option_ISS_bar = st.pills("Informação Barras", options=pills_options_ISS_bar, selection_mode ='single', default = pills_options_ISS_bar[0], required=True, width='stretch')
   option_ISS_line = st.pills("Informação Linhas", options=pills_options_ISS_line, selection_mode ='single', default = pills_options_ISS_line[0], required=True, width='stretch')
   servicos_selecionados_disabled = False if option_ISS_bar in ["ISS por item da lista²", "Valor dos Serviços (item da lista)", 'Notas emitidas por item'] else True
-  servicos_selecionados = st.multiselect("Selecione os Serviços", options = list(df_todos_item['Desc. Item lista'].unique()), 
+  servicos_selecionados = st.multiselect("Selecione os Serviços", options = list(df_todos_item['Desc. Item lista'].unique()),
                                         default =list(df_todos_item['Desc. Item lista'].unique())[0],  disabled =servicos_selecionados_disabled)
   df_item = df_todos_item[df_todos_item['Desc. Item lista'].isin(servicos_selecionados)]
-  
+  df_item.sort_values(by='Ano')
+
   dict_pills_ISS = {"ISS (todos itens)":(df_total_anual, 'ISS Total NFSE'),
                   "ISS por item da lista²":(df_item, 'ISS Total NFSE'),
                   "Valor dos Serviços (item da lista)":(df_item, 'Valor serviços'),
@@ -129,7 +130,7 @@ with st.container(border=True):
                   'Notas emitidas por item':(df_item, 'Qtd.'), 'Notas Emitidas Total':(df_total_anual, 'Qtd.')
                   }
 
-  
+
   # Criando a figura
   # Adicionando as Barras
   if option_ISS_bar in ["ISS por item da lista²", "Valor dos Serviços (item da lista)", 'Notas emitidas por item']:
@@ -212,26 +213,59 @@ with st.container(border=True):
 
 
 with st.container(border=True):
-  dado_px_tree = st.pills('Selecione a Informação', options = ['ISS Total NFSE', 'Valor serviços'],selection_mode ='single',
+  coluna_2a, coluna_2b = st.columns([0.5, 0.5])
+  with coluna_2a:
+    VA_IPM_options = ['VA Total', 'IPM', 'Repasse ICMS (Transparência/Parcial¹) R$ mi.']
+    option_VA_IPM_ = st.pills("Selecione a Informação", options=VA_IPM_options, selection_mode ='single', default = VA_IPM_options[0], required=True, width='stretch')
+    #option_VA_IPM_ = 'Repasse ICMS (Transparência/Parcial¹)'
+    fig_2a = px.bar(VA_IPM,
+            x='Ano',
+            y=option_VA_IPM_,
+            color_discrete_sequence=color_palete,
+            text_auto=True)
+    fig_2a.update_layout(colorway=color_palete,template='plotly_white')
+    st.plotly_chart(fig_2a,  use_container_width=True,    width="stretch")
+  with coluna_2b:
+    Simples_consolidado = Arrecadacoes_Simples.groupby('Ano', as_index=False)['Arrecadação Simples'].sum()
+    #Simples_Pills_options = ['Arrecadação Simples', 'Valor Serviços Simples', 'Aliquota Média Simples', 'Notas Emitidas Simples']
+    Simples_Pills_options = ['Arrecadação Simples']
+    option_Simples_bar = st.pills("Selecione a Informação", options=Simples_Pills_options, selection_mode ='single', default = Simples_Pills_options[0], required=True, width='stretch')    
+    fig_2b = px.bar(Simples_consolidado[Simples_consolidado['Ano']>=2019],
+        x='Ano',
+        y=option_Simples_bar,
+        color_discrete_sequence=px.colors.qualitative.Antique, text_auto =True
+    )
+    fig_2b.update_layout(template='plotly_white',)
+    fig_2b.update_layout(colorway=color_palete)
+    st.plotly_chart(fig_2b,  use_container_width=True,    width="stretch")
+
+
+
+with st.container(border=True):
+  dado_px_tree = st.pills('Selecione a Informação', options = ['ISS Total NFSE', 'Valor serviços', 'Valor Adicionado'],selection_mode ='single',
                           default = 'Valor serviços', required =True)
 
-
-  df_Iss_px_tree = Dados_nfse[Dados_nfse['Ano']==str(ano_atual)]
-
-  fig_2a = px.treemap(
-      df_Iss_px_tree,
-      path=['Ano', 'Desc. Grupo da lista_TM', 'Desc. Item lista_TM'],
+  if dado_px_tree == 'Valor Adicionado':
+    VA_anual_CNAE_Itajai = VA_CNAE_Itajai[VA_CNAE_Itajai['Ano']==str(ano_atual-1)]
+    VA_anual_CNAE_Itajai['Valor Adicionado_div_mi'] = VA_anual_CNAE_Itajai['Valor Adicionado']/1000000
+    fig_3a = px.treemap(VA_anual_CNAE_Itajai, path=['Ano','Seção Cnae', 'Divisão Cnae','Descrição Atividade'], values='Valor Adicionado_div_mi', maxdepth=2)
+    fig_3a.update_traces(texttemplate="%{label}</b><br>R$ %{value:,.2f} Mi.<br>%{percentRoot:.1%}")
+  else:
+    df_px_tree = Dados_nfse[Dados_nfse['Ano']==str(ano_atual)]
+    fig_3a = px.treemap(
+      df_px_tree,
+      path=['Ano','Desc. Grupo da lista_TM', 'Desc. Item lista_TM'],
       values=dado_px_tree,
       maxdepth=2,
-      height = 600
   )
 
-  fig_2a.update_traces(textinfo='label+value+percent root')
-  fig_2a.update_traces(hovertemplate='%{label}<br>',textfont=dict(size=16), marker=dict(cornerradius=8), marker_line_color="black")
-  fig_2a.update_layout(margin=dict(t=2, b=2, l=2, r=2))
-  fig_2a.update_layout(colorway=color_palete)
-  st.plotly_chart(fig_2a,  use_container_width=True,    width="stretch")
 
+  fig_3a.update_traces(textinfo='label+value+percent root')
+  fig_3a.update_traces(hovertemplate='%{label}<br>',textfont=dict(size=16), marker=dict(cornerradius=8), marker_line_color="black")
+  fig_3a.update_layout(margin=dict(t=2, b=2, l=2, r=2))
+  fig_3a.update_layout(colorway=color_palete)
+  fig_3a.update_layout(template="plotly_white")
+  st.plotly_chart(fig_3a,  use_container_width=True,    width="stretch")
 
 with st.container(border=True):
     itens_VA_CNAE = list(VA_CNAE_Itajai['Descrição Atividade'].unique())
